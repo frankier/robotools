@@ -18,8 +18,10 @@ on:
   workflow_dispatch:
 
 concurrency:
+  # Cancel older runs only on main: a newer push supersedes the previous build.
+  # Other refs (e.g. pull requests) keep their runs so each PR still gets a result.
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 env:
   DOCKERFILE: Dockerfile.base
