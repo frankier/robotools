@@ -1,13 +1,21 @@
 FROM public.ecr.aws/s5i7k8t3/strongdm/coder
 
+# llvm.sh needs lsb_release, the oneAPI steps need a C/C++ toolchain and cmake.
 RUN set -eux; \
     apt-get update; \
     apt-get upgrade -y; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        lsb-release wget gnupg ca-certificates \
+        build-essential gcc g++ gdb make \
+        libc6-dev linux-libc-dev \
+        libgomp1 libomp-dev \
+        openmpi-bin libopenmpi-dev \
+        cmake ninja-build pkg-config; \
     curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL="/usr/local/bin/" sh; \
     curl -fsSL https://pi.dev/install.sh | sh; \
-    UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/venv uv tool install vibe; \
-    curl -LsSf https://mistral.ai/vibe/install.sh | bash; \
-    bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ; \
+    curl -LsSf https://mistral.ai/vibe/install.sh | \
+        UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/venv bash; \
+    bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"; \
     rm -rf /var/lib/apt/lists/*
 
 {{oneapi_toolkit_install}}
