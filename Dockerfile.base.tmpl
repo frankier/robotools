@@ -5,6 +5,7 @@ RUN set -eux; \
     apt-get upgrade -y; \
     curl -LsSf https://astral.sh/uv/install.sh | sh; \
     curl -fsSL https://pi.dev/install.sh | sh; \
+    UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/venv uv tool install vibe; \
     curl -LsSf https://mistral.ai/vibe/install.sh | bash; \
     bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" ; \
     rm -rf /var/lib/apt/lists/*
