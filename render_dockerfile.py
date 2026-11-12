@@ -60,6 +60,49 @@ def strip_from(text: str) -> str:
     return "\n".join(out).strip("\n") + "\n"
 
 
+# The upstream snippet is written for Ubuntu 26.04, while the template's base
+# image is Debian based. Three Ubuntu-only details need adapting:
+#   * Debian no longer ships software-properties-common, so add-apt-repository
+#     is unavailable and the Ubuntu graphics PPA cannot be added. Debian
+#     provides the Intel GPU packages itself, so the step is dropped.
+#   * libarchive13 is named libarchive13t64 on Debian.
+PPA_BLOCK_RE = re.compile(
+    r"^# Repository to install Intel.*Graphics Driver\n"
+    r"ARG REPOSITORY=.*\n"
+    r"RUN add-apt-repository .*\n",
+    re.MULTILINE,
+)
+
+
+def adapt_to_debian(snippet: str) -> str:
+    """Rewrite the Ubuntu-only parts of the upstream snippet for Debian."""
+    without_ppa, ppa_count = PPA_BLOCK_RE.subn("", snippet)
+    if ppa_count != 1:
+        raise SystemExit(
+            "error: expected one Intel graphics PPA step in the upstream "
+            f"Dockerfile, found {ppa_count}; review adapt_to_debian()"
+        )
+
+    without_spp, spp_count = re.subn(
+        r"\s+software-properties-common", "", without_ppa
+    )
+    if spp_count != 1:
+        raise SystemExit(
+            "error: expected one software-properties-common in the upstream "
+            f"Dockerfile, found {spp_count}; review adapt_to_debian()"
+        )
+
+    adapted, archive_count = re.subn(
+        r"\blibarchive13\b", "libarchive13t64", without_spp
+    )
+    if archive_count != 1:
+        raise SystemExit(
+            "error: expected one libarchive13 in the upstream Dockerfile, "
+            f"found {archive_count}; review adapt_to_debian()"
+        )
+    return adapted
+
+
 def render(template_path: Path, var: str, snippet: str) -> str:
     source = template_path.read_text(encoding="utf-8")
     env = jinja2.Environment(
@@ -103,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     output = args.output or args.template.with_suffix("")
-    snippet = strip_from(fetch(args.url))
+    snippet = adapt_to_debian(strip_from(fetch(args.url)))
     content = render(args.template, args.variable, snippet)
 
     if args.check:
