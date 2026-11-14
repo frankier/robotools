@@ -88,5 +88,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Provenance attestations turn the push into an OCI image index whose
+          # child manifests are untagged. Apptainer resolves the index to the
+          # platform manifest, so a missing child breaks every pull with
+          # MANIFEST_UNKNOWN. Push a single plain image manifest instead.
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
