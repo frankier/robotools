@@ -1,0 +1,68 @@
+name: Clean up old images
+
+# Manual only: deleting package versions is destructive, so it never runs on a
+# schedule or as part of a build. Dispatch this workflow when storage grows.
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Number of newest image versions to keep"
+        required: false
+        default: "5"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  delete-old-versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Delete all but the newest image versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          KEEP: ${{ inputs.keep }}
+        run: |
+          set -euo pipefail
+
+          case "$KEEP" in
+            ''|*[!0-9]*) echo "error: keep must be a non-negative integer, got '$KEEP'" >&2; exit 1 ;;
+          esac
+
+          # GHCR package names are the lowercased repository name.
+          package="${GH_REPO#*/}"
+          package="${package,,}"
+
+          # Package versions live under /orgs/<owner> or /users/<owner>,
+          # depending on the account type.
+          if [ "$(gh api "/users/$OWNER" --jq .type)" = "Organization" ]; then
+            base="/orgs/$OWNER/packages/container/$package"
+          else
+            base="/users/$OWNER/packages/container/$package"
+          fi
+
+          # Newest first, one line per version: created_at, id, tags.
+          versions="$RUNNER_TEMP/versions.tsv"
+          gh api --paginate "$base/versions?per_page=100" \
+            --jq '.[] | "\(.created_at)\t\(.id)\t\([.metadata.container.tags[]?] | join(","))"' \
+            | sort -r -t $'\t' -k1,1 > "$versions"
+
+          total=$(wc -l < "$versions")
+          echo "found $total version(s), keeping the newest $KEEP"
+
+          # Keep the newest $KEEP versions, and never delete the version that
+          # carries the `latest` tag even if it is older than the rest.
+          tail -n "+$((KEEP + 1))" "$versions" | while IFS=$'\t' read -r created id tags; do
+            case ",$tags," in
+              *,latest,*)
+                echo "keeping $id ($created) because it is tagged latest"
+                continue
+                ;;
+            esac
+            echo "deleting $id ($created) tags=[$tags]"
+            gh api -X DELETE "$base/versions/$id"
+          done

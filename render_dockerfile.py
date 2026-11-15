@@ -62,16 +62,38 @@ def strip_from(text: str) -> str:
 
 # The upstream snippet is written for Ubuntu 26.04, while the template's base
 # image is Debian based. Three Ubuntu-only details need adapting:
-#   * Debian no longer ships software-properties-common, so add-apt-repository
-#     is unavailable and the Ubuntu graphics PPA cannot be added. Debian
-#     provides the Intel GPU packages itself, so the step is dropped.
-#   * libarchive13 is named libarchive13t64 on Debian.
+#   * The Intel graphics PPA is an Ubuntu archive, so the add-apt-repository
+#     step cannot work on Debian. Debian packages the Intel GPU stack itself,
+#     so the step is dropped.
+#   * libarchive13 was renamed to libarchive13t64 in Debian 13 (trixie) and
+#     Ubuntu 24.04, while Debian 12 (bookworm) - the release the Paseo base
+#     image is built on - still ships libarchive13.
+#   * libze-intel-gpu1 (the Level Zero GPU driver) is packaged by Debian 13 and
+#     by the Ubuntu graphics PPA, but neither Debian 12 nor Intel's oneAPI
+#     repository ships it, so it is unavailable on bookworm.
+# Both package names are resolved at build time instead of being hardcoded to a
+# single Debian release, so the rendered Dockerfile keeps building when the base
+# image moves to a newer Debian.
 PPA_BLOCK_RE = re.compile(
     r"^# Repository to install Intel.*Graphics Driver\n"
     r"ARG REPOSITORY=.*\n"
     r"RUN add-apt-repository .*\n",
     re.MULTILINE,
 )
+
+
+def apt_pick(*names: str) -> str:
+    """Return a shell expression that expands to the first package apt knows.
+
+    The snippet's install steps run ``apt-get update`` before installing, so
+    ``apt-cache`` can answer by the time this expression is evaluated. It
+    expands to nothing when none of the names is available.
+    """
+    probes = " ".join(names)
+    return (
+        f'$(for p in {probes}; do '
+        'apt-cache show "$p" >/dev/null 2>&1 && { echo "$p"; break; }; done)'
+    )
 
 
 def adapt_to_debian(snippet: str) -> str:
@@ -92,13 +114,22 @@ def adapt_to_debian(snippet: str) -> str:
             f"Dockerfile, found {spp_count}; review adapt_to_debian()"
         )
 
-    adapted, archive_count = re.subn(
-        r"\blibarchive13\b", "libarchive13t64", without_spp
+    with_archive, archive_count = re.subn(
+        r"\blibarchive13\b", apt_pick("libarchive13t64", "libarchive13"), without_spp
     )
     if archive_count != 1:
         raise SystemExit(
             "error: expected one libarchive13 in the upstream Dockerfile, "
             f"found {archive_count}; review adapt_to_debian()"
+        )
+
+    adapted, gpu_count = re.subn(
+        r"\blibze-intel-gpu1\b", apt_pick("libze-intel-gpu1"), with_archive
+    )
+    if gpu_count != 1:
+        raise SystemExit(
+            "error: expected one libze-intel-gpu1 in the upstream Dockerfile, "
+            f"found {gpu_count}; review adapt_to_debian()"
         )
     return adapted
 

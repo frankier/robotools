@@ -1,21 +1,53 @@
-FROM public.ecr.aws/s5i7k8t3/strongdm/coder
+# Base image: the official Paseo image. It ships Node 22, the Paseo daemon and
+# the `paseo` CLI (npm global, /usr/local/bin) and runs the daemon as the
+# unprivileged `paseo` user (uid 1000, HOME=/home/paseo, /home/paseo is a
+# volume). Its entrypoint prepares the volume and drops to `paseo`, so the
+# image keeps working as a Paseo image.
+FROM ghcr.io/getpaseo/paseo:latest
 
-# llvm.sh needs lsb_release, the oneAPI steps need a C/C++ toolchain and cmake.
+# The Paseo image runs as root and drops to `paseo` in the entrypoint. Build as
+# root; install user-scoped tools as `paseo` (see the Pi step).
+USER root
+
+# llvm.sh needs lsb_release and, on Debian 12, add-apt-repository (it only
+# skips that for trixie and newer); the oneAPI steps need a C/C++ toolchain and
+# cmake.
 RUN set -eux; \
     apt-get update; \
     apt-get upgrade -y; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        lsb-release wget gnupg ca-certificates \
+        lsb-release wget gnupg ca-certificates software-properties-common \
         build-essential gcc g++ gdb make \
         libc6-dev linux-libc-dev \
         libgomp1 libomp-dev \
         openmpi-bin libopenmpi-dev \
         cmake ninja-build pkg-config; \
     curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL="/usr/local/bin/" sh; \
-    curl -fsSL https://pi.dev/install.sh | sh; \
     curl -LsSf https://mistral.ai/vibe/install.sh | \
         UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/venv bash; \
     bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"; \
     rm -rf /var/lib/apt/lists/*
 
+# Pi installs itself under $HOME/.pi/agent and links its launcher into the first
+# writable directory on PATH, so run the installer as `paseo` with
+# ~/.local/bin first: the shim then lands in /home/paseo/.local/bin/pi and the
+# daemon can update Pi without root.
+RUN set -eux; \
+    install -d -o paseo -g paseo /home/paseo/.local/bin; \
+    gosu paseo env PATH="/home/paseo/.local/bin:$PATH" \
+        sh -c 'curl -fsSL https://pi.dev/install.sh | sh'; \
+    test -x /home/paseo/.local/bin/pi
+
 {{oneapi_toolkit_install}}
+
+# The oneAPI steps above set PATH to an absolute value that only lists
+# /usr/local and the Intel trees. That drops the directories holding the agent
+# CLIs, the user tools and Pi's shim, so the daemon (running as `paseo`) and the
+# agents it launches could not find them. Put the user directory back in front.
+ENV PATH="/home/paseo/.local/bin:${PATH}"
+
+# Fail the build if any agent, tool or Paseo executable is missing from PATH.
+RUN set -eux; \
+    for cmd in pi vibe uv uvx paseo node npm; do \
+        command -v "$cmd" > /dev/null || { echo "error: $cmd is not on PATH" >&2; exit 1; }; \
+    done
