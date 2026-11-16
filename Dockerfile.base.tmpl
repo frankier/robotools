@@ -38,6 +38,14 @@ RUN set -eux; \
         sh -c 'curl -fsSL https://pi.dev/install.sh | sh'; \
     test -x /home/paseo/.local/bin/pi
 
+# Codex CLI (OpenAI) from npm. npm's global prefix is /usr/local, so the
+# launcher lands in /usr/local/bin, which stays on PATH after the oneAPI steps
+# below. The package pulls the platform binary through an optional dependency,
+# so it must be installed for the image's architecture (amd64).
+RUN set -eux; \
+    npm install -g @openai/codex; \
+    codex --version
+
 {{oneapi_toolkit_install}}
 
 # The oneAPI steps above set PATH to an absolute value that only lists
@@ -48,6 +56,6 @@ ENV PATH="/home/paseo/.local/bin:${PATH}"
 
 # Fail the build if any agent, tool or Paseo executable is missing from PATH.
 RUN set -eux; \
-    for cmd in pi vibe uv uvx paseo node npm; do \
+    for cmd in pi vibe codex uv uvx paseo node npm; do \
         command -v "$cmd" > /dev/null || { echo "error: $cmd is not on PATH" >&2; exit 1; }; \
     done
