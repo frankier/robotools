@@ -26,23 +26,19 @@ RUN set -eux; \
     curl -LsSf https://mistral.ai/vibe/install.sh | \
         UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/venv bash; \
     bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"; \
-    rm -rf /var/lib/apt/lists/*
-
-# Pi installs itself under $HOME/.pi/agent and links its launcher into the first
-# writable directory on PATH, so run the installer as `paseo` with
-# ~/.local/bin first: the shim then lands in /home/paseo/.local/bin/pi and the
-# daemon can update Pi without root.
-RUN set -eux; \
+    rm -rf /var/lib/apt/lists/* \ {#
+Pi installs itself under $HOME/.pi/agent and links its launcher into the first
+writable directory on PATH, so run the installer as `paseo` with
+~/.local/bin first: the shim then lands in /home/paseo/.local/bin/pi and the
+daemon can update Pi without root. #}
     install -d -o paseo -g paseo /home/paseo/.local/bin; \
     gosu paseo env PATH="/home/paseo/.local/bin:$PATH" \
         sh -c 'curl -fsSL https://pi.dev/install.sh | sh'; \
-    test -x /home/paseo/.local/bin/pi
-
-# Codex CLI (OpenAI) from npm. npm's global prefix is /usr/local, so the
-# launcher lands in /usr/local/bin, which stays on PATH after the oneAPI steps
-# below. The package pulls the platform binary through an optional dependency,
-# so it must be installed for the image's architecture (amd64).
-RUN set -eux; \
+    test -x /home/paseo/.local/bin/pi \ {#
+Codex CLI (OpenAI) from npm. npm's global prefix is /usr/local, so the
+launcher lands in /usr/local/bin, which stays on PATH after the oneAPI steps
+below. The package pulls the platform binary through an optional dependency,
+so it must be installed for the image's architecture (amd64). #}
     npm install -g @openai/codex; \
     codex --version
 
