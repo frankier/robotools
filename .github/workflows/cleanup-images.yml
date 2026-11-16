@@ -55,11 +55,13 @@ jobs:
           echo "found $total version(s), keeping the newest $KEEP"
 
           # Keep the newest $KEEP versions, and never delete the version that
-          # carries the `latest` tag even if it is older than the rest.
+          # carries a moving tag (`latest` for the base image, `frankier` for
+          # the image built from Dockerfile.frankier) even if it is older than
+          # the rest.
           tail -n "+$((KEEP + 1))" "$versions" | while IFS=$'\t' read -r created id tags; do
             case ",$tags," in
-              *,latest,*)
-                echo "keeping $id ($created) because it is tagged latest"
+              *,latest,*|*,frankier,*)
+                echo "keeping $id ($created) because it carries a moving tag"
                 continue
                 ;;
             esac

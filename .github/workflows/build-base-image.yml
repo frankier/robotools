@@ -93,5 +93,7 @@ jobs:
           # platform manifest, so a missing child breaks every pull with
           # MANIFEST_UNKNOWN. Push a single plain image manifest instead.
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A dedicated cache scope keeps this workflow from evicting the
+          # cache of build-frankier-image.yml and vice versa.
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
